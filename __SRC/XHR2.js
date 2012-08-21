@@ -10,16 +10,15 @@ TODO::
 
 if(typeof FormData == "undefined") {
 
-!function(global) {
+!function() {
 
 /** @const */
 var UUID_PREFIX = "m392bhj0d" + (Math.random() * 9e9);
 
 
-var _XMLHttpRequest_ = global.XMLHttpRequest
-
-	/** type {Object} oroginal XHR */
-  , XHR = _XMLHttpRequest_ || function() {
+var global = window
+	/** type {Object} original XHR */
+  , _XMLHttpRequest_ =  (global.XMLHttpRequest + "").indexOf("ActiveXObject") == -1 && global.XMLHttpRequest || function() {
 		var xhr = new ActiveXObject("Microsoft.XMLHTTP"),
 			_xhr_send = xhr.send;
 		
@@ -30,13 +29,17 @@ var _XMLHttpRequest_ = global.XMLHttpRequest
 		}
 	}
 
-  , UUID = 0
+  , UUID = 1
 
   , _Document = global["Document"] || global["HTMLDocument"]
 
   , _ArrayBuffer = global["ArrayBuffer"]
 
-  , IEBinaryToArray_ByteStr__NAME = UUID_PREFIX + "IEBinaryToArray_ByteStr";
+  , IEBinaryToArray_ByteStr__NAME = UUID_PREFIX + "IEBinaryToArray_ByteStr"
+
+  , _EventTarget_ = document.documentElement
+
+  , removeScriptTagsFromHTML
 ;
 function convertResponseBodyToText(byteArray) {
 	// http://jsperf.com/vbscript-binary-download/6
@@ -67,16 +70,17 @@ function convertResponseBodyToText(byteArray) {
 		scrambledStr = global[IEBinaryToArray_ByteStr__NAME](byteArray);
 	}
 
-	var lastChr = global[IEBinaryToArray_ByteStr__NAME + "_Last"](byteArray),
-	result = "",
-	i = 0,
-	l = scrambledStr.length % 8,
-	thischar;
+	var lastChr = global[IEBinaryToArray_ByteStr__NAME + "_Last"](byteArray)
+	  , result = ""
+	  , i = 0
+	  , l = scrambledStr.length % 8
+	  , thischar
+	;
 	while (i < l) {
 		thischar = scrambledStr.charCodeAt(i++);
 		result += String.fromCharCode(thischar & 0xff, thischar >> 8);
 	}
-	l = scrambledStr.length
+	l = scrambledStr.length;
 	while (i < l) {
 		result += String.fromCharCode(
 			(thischar = scrambledStr.charCodeAt(i++), thischar & 0xff), thischar >> 8,
@@ -92,22 +96,22 @@ function convertResponseBodyToText(byteArray) {
 		result += String.fromCharCode(lastChr);
 	}
 	return result;
-};
+}
 
-if("DOMParser" in blobal) {
+if("DOMParser" in global) {
 	//DOMParser HTML extension - Now a polyfill since HTML parsing was added to the DOMParser specification
 	//https://gist.github.com/1129031
 	(function(real_parseFromString) {
 		// Firefox/Opera/IE throw errors on unsupported types
 		try {
 			// WebKit returns null on unsupported types
-			if ((new DOMParser).parseFromString("", "text/html")) {
+			if ((new DOMParser)["parseFromString"]("", "text/html")) {
 				// text/html parsing is natively supported
 				return;
 			}
 		} catch (ex) {}
 
-		DOMParser.prototype.parseFromString = function(markup, type) {
+		DOMParser.prototype["parseFromString"] = function(markup, type) {
 			if (/^\s*text\/html\s*(?:;|$)/i.test(type)) {
 				var
 				  doc = document.implementation.createHTMLDocument("")
@@ -130,7 +134,7 @@ if("DOMParser" in blobal) {
 				return real_parseFromString.apply(this, arguments);
 			}
 		};
-	})(DOMParser.prototype.parseFromString);
+	})(DOMParser.prototype["parseFromString"]);
 }
 else if(_XMLHttpRequest_) {//Old Safary
 	//Do we REALY need this?
@@ -138,7 +142,12 @@ else if(_XMLHttpRequest_) {//Old Safary
 }
 else {//IE < 9
 	global["DOMParser"] = function _DOMParser(){};
-	_DOMParser.prototype.parseFromString = function(markup, type) {
+
+	removeScriptTagsFromHTML = function() {
+		return this.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+	};
+
+	_DOMParser.prototype["parseFromString"] = function(markup, type) {
 		if(/xml$/.test(type)) {
 			//Only for XML http://erik.eae.net/archives/2005/07/03/20.19.18/
 			var xml = new ActiveXObject("Microsoft.XMLDOM");
@@ -148,8 +157,57 @@ else {//IE < 9
 		}
 		else {
 			//TODO::
-			// 1. iframe | side effect: I. <script> will run (but we can do some string.replace work). II. Images will load (realy?)
-			throw new Error("Unsupported for now")
+			// 1. iframe | side effect: I. Images will load (realy?)
+			// 2. To prevent memory leak we can build VBScript class XHRDocumentClass with
+			// ```vbscript
+			// Private Sub Class_Terminate()
+			//   iFrameObject.document.documentElement.innerHTML = ""
+			//   iFrameObject.document._ = iFrameObject.document.documentElement._ = nil
+			//   document.body.removeChild(iFrameObject)
+			// End Sub
+			// ```
+			// But! We need to write getter in XHRDocumentClass to each property from _document_
+			// Something about vbscript: http://www.quicktestingtips.com/tips/2010/10/dont-blame-vbscript/
+
+			markup = removeScriptTagsFromHTML(markup);
+
+			var resultIFrame = document.createElement("iframe");
+			resultIFrame.src = "about:blank";
+			resultIFrame.style.display = "none";
+			resultIFrame.name = resultIFrame.id = "__XHR_document_" + ++UUID;
+			document.body.appendChild(resultIFrame);
+			resultIFrame.contentWindow.document.write(markup);
+			resultIFrame.contentWindow.document["__destroy__"] = function() {
+				var _doc = this.contentWindow.document;
+				_doc.documentElement.innerHTML = "";
+				_doc["_"] = void 0;
+				/*TODO:: filter build-in properties suche as "URL", "location", etc
+				 Object.keys(_doc).forEach(function(key){
+				    try{
+				        _doc[key] = void 0;
+				    }
+				    catch(e){}
+				 })
+				*/
+				document.body.removeChild(this);
+			}.bind(resultIFrame);
+
+			return resultIFrame.contentWindow.document;
+
+			//TODO::
+			/*if(!("addEventListener") in resultIFrame.contentWindow.document) {
+				resultIFrame.contentWindow.document.write("\
+					<!--[if lt IE 8]>\
+					<script src='a.ielt8.js'></script>\
+					<![endif]-->\
+					<!--[if IE 8]>\
+					<script src='a.ie8.js'></script>\
+					<![endif]-->\
+					<script src='a.js'></script>\
+				");
+			}*/
+
+			//throw new Error("Unsupported for now")
 		}
 	}
 }
@@ -292,8 +350,8 @@ _FormData.prototype = {
 			prevs = [];
 
 			Object.keys(options).forEach(function(attr) {
-				form.setAttribute(attr, options[attr]);			
-			})
+				this.setAttribute(attr, options[attr]);
+			}, form);
 
 			Object.keys(this._pairs).forEach(function(name) {
 				var input = document.createElement("input"),
@@ -479,7 +537,7 @@ function checkIsXML(elem) {
  * @constructor
  */
 function XMLHttpRequest2() {
-	var xhr = this.XHR1 = new XHR;
+	var xhr = this.XHR1 = new _XMLHttpRequest_;
 
 	this._supportTimeOut = "timeout" in xhr;
 	this._supportUpload = "upload" in xhr;
@@ -512,13 +570,13 @@ function XMLHttpRequest2() {
 XMLHttpRequest2.prototype = {
 	constructor : XMLHttpRequest2
 	, addEventListener : function(a, b, c) {
-		document.documentElement.addEventListener.call(this, a, b, c);
+		_EventTarget_.addEventListener.call(this, a, b, c);
 	}
 	, dispatchEvent : function(e) {
-		document.documentElement.dispatchEvent.call(this, e);
+		_EventTarget_.dispatchEvent.call(this, e);
 	}
 	, removeEventListener : function(a, b, c) {
-		document.documentElement.removeEventListener.call(this, a, b, c);
+		_EventTarget_.removeEventListener.call(this, a, b, c);
 	}
 	/** @this {XMLHttpRequest2} */
 	, _onreadystatechange : function(e) {
@@ -526,7 +584,10 @@ XMLHttpRequest2.prototype = {
 			s;
 
 		if(this.timeout !== 0 && !this._supportTimeOut) {
-			if(this._time <= Date.now() - this.timeout)this.XHR1.abort();
+			if(this._time <= Date.now() - this.timeout){ 
+				this.XHR1.abort();
+				//TODO:: this.dispatchEvent(new Event('abort'));
+			}
 		}
 
 		if ((this.readyState = xhr.readyState) == 4) {
@@ -567,16 +628,18 @@ XMLHttpRequest2.prototype = {
 						}
 					break;
 
-					case "blob":
-						//TODO::
+					case "document":
+						if(!this.responseXML) {
+							s = XMLHttpRequest2.DOMParser || (XMLHttpRequest2.DOMParser = new global["DOMParser"]);
+							this.response = s["parseFromString"](this.responseText, "text/html");
+						}
+						else {
+							this.response = this.responseXML;
+						}
 					break;
 
-					case "document":
-						this.response = xhr.responseXML;
-						if(!xhr.responseXML) {
-							s = document.createElement("iframe")
-							//TODO::
-						}
+					case "blob":
+						//TODO::
 					break;
 
 					case "text":
@@ -720,8 +783,7 @@ XMLHttpRequest2.prototype = {
 
 				if(!thisObj.XHR1)return;
 			}
-			if(data instanceof _Document ||
-			   !_Document && "nodeType" in data && data.nodeType === 9//IE lt 8
+			if(data instanceof _Document || "nodeType" in data && data.nodeType === 9//IE lt 8
 			   ) {
 			   	data = _prepeareDocumentDataForSending(data, thisObj.XHR1);
 			}
@@ -749,6 +811,6 @@ global["XMLHttpRequest"] = XMLHttpRequest2;
 global["XMLHttpRequestUpload"] = _XMLHttpRequestUpload;
 
 
-}(window);
+}();
 
 }
