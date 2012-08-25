@@ -6,6 +6,9 @@ Over fings:
 TODO::
 1. https://raw.github.com/vjeux/jDataView/master/src/jdataview.js  (http://habrahabr.ru/post/144008/)
 2. http://readd.ru/read.php?aHR0cDovL2hhYnJhaGFici5ydS9ibG9ncy9odG1sNS8xMzMzNTEvXn5e0KXQsNCx0YDQsNGF0LDQsdGAXn5eMjUuMTEuMTEgMDE6NTg= (Воркараунд xhr.send(Blob) для Opera)
+
+ https://raw.github.com/jquery/jquery/master/src/ajax.js
+ https://raw.github.com/jquery/jquery/1d1d4fe112c49cbd704d880b27cc646f2bfe1737/src/ajax/xhr.js
 */
 
 if(typeof FormData == "undefined") {
@@ -18,16 +21,19 @@ var UUID_PREFIX = "m392bhj0d" + (Math.random() * 9e9);
 
 var global = window
 	/** type {Object} original XHR */
-  , _XMLHttpRequest_ =  (global.XMLHttpRequest + "").indexOf("ActiveXObject") == -1 && global.XMLHttpRequest || function() {
-		var xhr = new ActiveXObject("Microsoft.XMLHTTP"),
-			_xhr_send = xhr.send;
-		
-		xhr.send = function() {
-			//Fixes IE Caching problem
-	        this.setRequestHeader("If-Modified-Since", "Sat, 1 Jan 2000 00:00:00 GMT");//TODO:: tests
-	        _xhr_send.apply(this, arguments);
-		}
-	}
+  , _XMLHttpRequest_ =  global.XMLHttpRequest
+
+  , xhrs = []
+
+  , getNewXhr =
+		_XMLHttpRequest_ ?
+			function() { return new _XMLHttpRequest_ }
+			:
+			function() {
+				return new ActiveXObject("Microsoft.XMLHTTP");
+			}
+
+  , _function_noop = function(){}
 
   , UUID = 1
 
@@ -37,10 +43,14 @@ var global = window
 
   , IEBinaryToArray_ByteStr__NAME = UUID_PREFIX + "IEBinaryToArray_ByteStr"
 
-  , _EventTarget_ = document.documentElement
-
   , removeScriptTagsFromHTML
+
+  , _test_XHR = getNewXhr()
+
+  , IS_XHR_SUPPORT_TIMEOUT = "timeout" in _test_XHR
+  , IS_XHR_SUPPORT_UPLOAD = "upload" in _test_XHR
 ;
+
 function convertResponseBodyToText(byteArray) {
 	// http://jsperf.com/vbscript-binary-download/6
 	var scrambledStr;
@@ -286,6 +296,24 @@ encodeFormData: function(data) {
     return pairs.join('&');
 }
 */
+
+
+
+_FormData_encodeSimpleFormData = function(data) {
+	if(!data)return false;
+
+	var pairs = [],
+		regexp = /%20/g;
+
+	for(var name in data) {
+		var value = data[name].toString(),
+			pair = encodeURIComponent(name).replace(regexp, '+') + '=' + encodeURIComponent(value).replace(regexp, '+');
+
+		pairs.push(pair);
+	}
+
+	return pairs.join('&');
+};
 /**
  * https://developer.mozilla.org/en/XMLHttpRequest/FormData
  * https://developer.mozilla.org/en/DOM/XMLHttpRequest/FormData/Using_FormData_Objects
@@ -414,34 +442,19 @@ _FormData.prototype = {
 		}
 		else {
 			if(_method == "GET") {
-				xhr.open(_method, _url + '?' + _FormData.encodeSimpleFormData(this._pairs));
+				xhr.open(_method, _url + '?' + _FormData_encodeSimpleFormData(this._pairs));
 				xhr.setRequestHeader('Content-Type', '*/*');
 			}
 			else {
 				xhr.open(_method, _url);
 				xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-				result = _FormData.encodeSimpleFormData(this._pairs);
+				result = _FormData_encodeSimpleFormData(this._pairs);
 			}
 
 			return result;
 		}
 	}
 	, toString : function() {return "[object FormData]"}
-};
-_FormData.encodeSimpleFormData = function(data) {
-	if(!data)return false;
-
-	var pairs = [],
-		regexp = /%20/g;
-
-	for(var name in data) {
-		var value = data[name].toString(),
-		pair = encodeURIComponent(name).replace(regexp, '+') + '=' + encodeURIComponent(value).replace(regexp, '+');
-
-		pairs.push(pair);
-	}
-
-	return pairs.join('&');
 };
 
 /*
@@ -472,7 +485,11 @@ _XMLHttpRequestUpload.prototype = {
 }*/
 
 
-
+/**
+ * Check for CORS mode
+ * @param uri
+ * @return {Object(state: number, from:string, to: string, fromProtocol: string, toProtocol: string)}
+ */
 function CORS_test(uri) {
 	var _link = CORS_test.link || (CORS_test.link = document.createElement("a")),
 		currentDomain = document.domain,
@@ -510,11 +527,11 @@ function CORS_test(uri) {
 	}
 
 	return {
-		"state" : _state,
-		"from" : currentDomain,
-		"to" : targetDomain,
-		"fromProtocol" : currentProtocol,
-		"toProtocol" : targetProtocol
+		state : _state,
+		from : currentDomain,
+		to : targetDomain,
+		fromProtocol : currentProtocol,
+		toProtocol : targetProtocol
 	};
 
 	//TODO::
@@ -537,53 +554,59 @@ function checkIsXML(elem) {
  * @constructor
  */
 function XMLHttpRequest2() {
-	var xhr = this.XHR1 = new _XMLHttpRequest_;
-
-	this._supportTimeOut = "timeout" in xhr;
-	this._supportUpload = "upload" in xhr;
+	if(IS_XHR_SUPPORT_UPLOAD) {
+		//TODO:: this.upload = new _XMLHttpRequestUpload(this.XHR1.upload);
+	}
+	else {
+		//TODO:: new _XMLHttpRequestUpload;
+	}
+	this._reset();
 
 	/** @type {Function} */
 	this.onreadystatechange	= null;
-	/** @type {number} */
-	this.readyState = xhr.readyState;
-	/** @type {(Object|String|ArrayBuffer|Blob|Document)} */
-	this.response = xhr.response || null;
-
-	/** @type {String} */
-	this.responseText = "";
-	/** @type {String} */
-	this.responseType = "";
-	/** @type {Object} */
-	this.responseXML = null;
-	/** @type {number} */
-	this.status = 0;
-	/** @type {String} */
-	this.statusText = "";
-
-	/** @type {number} */
-	this.timeout = 0;
-	/** @type {boolean} */
-	this.withCredentials = xhr.withCredentials || false;
-
-	if(this._supportUpload)this.upload = xhr.upload;// || new _XMLHttpRequestUpload;//TODO::
 }
 XMLHttpRequest2.prototype = {
 	constructor : XMLHttpRequest2
 	, addEventListener : function(a, b, c) {
-		_EventTarget_.addEventListener.call(this, a, b, c);
+		//TODO::
 	}
 	, dispatchEvent : function(e) {
-		_EventTarget_.dispatchEvent.call(this, e);
+		//TODO::
 	}
 	, removeEventListener : function(a, b, c) {
-		_EventTarget_.removeEventListener.call(this, a, b, c);
+		//TODO::
+	}
+	, _reset : function() {
+		/** @type {number} */
+		this.readyState = 0;
+		/** @type {(Object|String|ArrayBuffer|Blob|Document)} */
+		this.response = null;
+
+		/** @type {String} */
+		this.responseText = "";
+		/** @type {String} */
+		this.responseType = "";
+		/** @type {Object} */
+		this.responseXML = null;
+		/** @type {number} */
+		this.status = 0;
+		/** @type {String} */
+		this.statusText = "";
+
+		/** @type {number} */
+		this.timeout = 0;
+		/** @type {boolean} */
+		this.withCredentials = false;
 	}
 	/** @this {XMLHttpRequest2} */
 	, _onreadystatechange : function(e) {
-		var xhr = this.XHR1,
-			s;
+		var xhr = this.XHR1
+			, _status
+			, _statusText
+			, _responseHeaders
+		;
 
-		if(this.timeout !== 0 && !this._supportTimeOut) {
+		if(this.timeout !== 0 && !IS_XHR_SUPPORT_TIMEOUT) {
 			if(this._time <= Date.now() - this.timeout){ 
 				this.XHR1.abort();
 				//TODO:: this.dispatchEvent(new Event('abort'));
@@ -591,10 +614,45 @@ XMLHttpRequest2.prototype = {
 		}
 
 		if ((this.readyState = xhr.readyState) == 4) {
-			s = this.status = xhr.status;
-			this.statusText = xhr.statusText || s + "";
+			_status = xhr.status;
+			try { // [jQuery] Firefox throws an exception when accessing statusText for faulty cross-domain requests
+				_statusText = xhr.statusText;
+			} catch( e ) { }
 
-			if(s === 200) {
+			_responseHeaders = this.XHR1.getAllResponseHeaders();
+
+			// [jQuery]
+			// Filter status for non standard behaviours
+			// (so many they seem to be the actual "standard")
+			_status =
+				// Opera returns 0 when it should be 304
+				// Webkit returns 0 for failing cross-domain no matter the real status
+				_status === 0 ?
+					(
+						! this._CORS || _statusText ? // Webkit, Firefox: filter out faulty cross-domain requests
+							(
+								_responseHeaders ? // Opera: filter out real aborts http://bugs.jquery.com/ticket/6060
+									304
+									:
+									0
+								)
+							:
+							302 // We assume 302 but could be anything cross-domain related
+						)
+					:
+					(
+						_status == 1223 ?	// IE sometimes returns 1223 when it should be 204 (see http://bugs.jquery.com/ticket/1450)
+							204
+							:
+							_status
+						);
+
+			this.status = _status;
+
+			// [jQuery] We normalize with Webkit giving an empty statusText
+			this.statusText = _statusText || _status + "";
+
+			if(_status === 200) {
 				this.responseText = xhr.responseText;
 				this.responseXML = xhr.responseXML;
 
@@ -630,8 +688,8 @@ XMLHttpRequest2.prototype = {
 
 					case "document":
 						if(!this.responseXML) {
-							s = XMLHttpRequest2.DOMParser || (XMLHttpRequest2.DOMParser = new global["DOMParser"]);
-							this.response = s["parseFromString"](this.responseText, "text/html");
+							_status = XMLHttpRequest2.DOMParser || (XMLHttpRequest2.DOMParser = new global["DOMParser"]);
+							this.response = _status["parseFromString"](this.responseText, "text/html");
 						}
 						else {
 							this.response = this.responseXML;
@@ -646,6 +704,8 @@ XMLHttpRequest2.prototype = {
 					default:
 						this.response = xhr.responseText;						
 				}
+
+				this.XHR1.onreadystatechange = _function_noop;
 			}
 			else {
 				this._onerror(e);
@@ -658,21 +718,22 @@ XMLHttpRequest2.prototype = {
 	}
 	, _onload : function(e) {
 		if(!e || e.type != "load")e = new Event("load");
-		this.dispatchEvent(e);
+		//TODO:: this.dispatchEvent(e);
 	}
 	, _onerror : function(e) {
 		if(!e || e.type != "error")e = new Event("error");
-		this.dispatchEvent(e);
+		//TODO:: this.dispatchEvent(e);
 	}
 	, _ontimeout : function(e) {
-		if(!this._supportTimeOut) {
+		//TODO::
+		/*if(!IS_XHR_SUPPORT_TIMEOUT) {
 			if(!e || e.type != "timeout")e = new Event("timeout");
-			this.dispatchEvent(e);
+			TODO:: this.dispatchEvent(e);
 		}
 		else {
 			if(!("dispatchEvent" in this.XHR1))this.dispatchEvent(e);
 			else this.ontimeout(e);
-		}
+		}*/
 	}
 	, _fakeFormDataWithFileInputs_ondone : function(response) {
 		var xhr = this.XHR1 = {};
@@ -737,17 +798,29 @@ XMLHttpRequest2.prototype = {
 	, "getResponseHeader" : function (header) {
 		return this.XHR1.getResponseHeader(header);
 	}
-	, "open" : function(method, uri) {
+	, "open" : function(method, uri, isAsync, username, password) {
+		this.XHR1 = getNewXhr();
+
+		this._reset();
+
 		var rt = this.responseType;
 		if(rt == "arraybuffer" || rt == "blob")
 			if("overrideMimeType" in this.XHR1)this.XHR1.overrideMimeType('text\/plain; charset=x-user-defined');
 
 		this.__method__ = method;
 		this.__uri__ = uri;
-		this.XHR1.open(method, uri);
+
+		// [jQuery]
+		// Open the socket
+		// Passing null username, generates a login popup on Opera (http://bugs.jquery.com/ticket/2865)
+		if (username) {
+			this.XHR1.open(method, uri, isAsync, username, password);
+		} else {
+			this.XHR1.open(method, uri, isAsync);
+		}
 	}
 	, "overrideMimeType" : function() {
-		/*
+		/* TODO:: ???
 			if (xml.overrideMimeType) {
 			    xml.overrideMimeType('text/plain; charset=x-user-defined');
 			} else {
@@ -757,7 +830,10 @@ XMLHttpRequest2.prototype = {
 		this.XHR1.overrideMimeType.apply(this.XHR1, arguments);
 	}
 	, "setRequestHeader" : function() {
-		this.XHR1.setRequestHeader.apply(this.XHR1, arguments);
+		// [jQuery] Need an extra try/catch for cross domain requests in Firefox 3
+		try {
+			this.XHR1.setRequestHeader.apply(this.XHR1, arguments);
+		} catch(_) {}
 	}
 	/**
 	 * @param {(ArrayBuffer|Blob|Document|String|FormData)} data
@@ -767,25 +843,28 @@ XMLHttpRequest2.prototype = {
 			xhr = thisObj.XHR1,
 			cors = CORS_test(thisObj.__uri__);
 
-		if(cors && cors["state"] > 1)throw new Error("CORS with defferent protocol or domain (except subdomain) currently unsupporting");
+		if(cors && cors.state > 1)throw new Error("CORS with defferent protocol or domain (except subdomain) currently unsupporting");
+
+		this._CORS = cors;
 
 		xhr.responseType = thisObj.responseType;
 		xhr.withCredentials = thisObj.withCredentials;
 		xhr.timeout = +thisObj.timeout >>> 0;
-		if(thisObj.timeout !== 0 && !thisObj._supportTimeOut)thisObj._time = Date.now();
+		if(thisObj.timeout !== 0 && !IS_XHR_SUPPORT_TIMEOUT)thisObj._time = Date.now();
 		xhr.ontimeout = thisObj._ontimeout;
 
 		xhr.onreadystatechange = this._onreadystatechange.bind(this);
 
-		if(typeof data == "object") {
+		if(data && typeof data == "object") {
 			if(data instanceof _FormData) {
 				data = data._send(thisObj, cors);
 
 				if(!thisObj.XHR1)return;
 			}
-			if(data instanceof _Document || "nodeType" in data && data.nodeType === 9//IE lt 8
+			if(data instanceof _Document ||
+				data.nodeType === 9//IE lt 8
 			   ) {
-			   	data = _prepeareDocumentDataForSending(data, thisObj.XHR1);
+			   	data = this._prepeareDocumentDataForSending(data, thisObj.XHR1);
 			}
 			if(data instanceof _ArrayBuffer) {
 				//TODO::
@@ -793,22 +872,22 @@ XMLHttpRequest2.prototype = {
 			}
 		}
 
-		if(cors["state"] == 1) {
-			document.domain = cors["to"];
+		if(cors && cors.state == 1) {
+			document.domain = cors.to;
 		}
 		thisObj.XHR1.send(data);
-		if(cors["state"] == 1) {
-			document.domain = cors["from"];
+		if(cors && cors.state == 1) {
+			document.domain = cors.from;
 		}
 	}
-}
+};
 
-if(!("overrideMimeType" in new XHR))delete XMLHttpRequest2.prototype["overrideMimeType"];
+if(!("overrideMimeType" in _test_XHR))delete XMLHttpRequest2.prototype["overrideMimeType"];
 
 //EXPORT
 global["FormData"] = _FormData;
 global["XMLHttpRequest"] = XMLHttpRequest2;
-global["XMLHttpRequestUpload"] = _XMLHttpRequestUpload;
+//global["XMLHttpRequestUpload"] = _XMLHttpRequestUpload;
 
 
 }();
