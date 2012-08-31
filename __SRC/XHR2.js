@@ -4,7 +4,7 @@
 // @compilation_level ADVANCED_OPTIMIZATIONS
 // @warning_level VERBOSE
 // @jscomp_warning missingProperties
-// @output_file_name a.ielt8.js
+// @output_file_name XHR2.js
 // @check_types
 // ==/ClosureCompiler==
 
@@ -24,6 +24,7 @@ About XDomainRequest
 TODO::
 1. https://raw.github.com/vjeux/jDataView/master/src/jdataview.js  (http://habrahabr.ru/post/144008/)
 2. http://readd.ru/read.php?aHR0cDovL2hhYnJhaGFici5ydS9ibG9ncy9odG1sNS8xMzMzNTEvXn5e0KXQsNCx0YDQsNGF0LDQsdGAXn5eMjUuMTEuMTEgMDE6NTg= (Воркараунд xhr.send(Blob) для Opera)
+3. http://www.w3.org/TR/progress-events/#interface-progressevent
 
  https://raw.github.com/jquery/jquery/master/src/ajax.js
  https://raw.github.com/jquery/jquery/1d1d4fe112c49cbd704d880b27cc646f2bfe1737/src/ajax/xhr.js
@@ -92,9 +93,6 @@ var
 
 		return result;
 	}, {})
-	, _FormData_encodeSimpleFormData
-	, _FormData_encodeDifficaltFormData
-	, _FormData_shim_send
 ;
 
 if(
@@ -110,9 +108,10 @@ if(
 
 
 
-/** @const */
-var UUID_PREFIX = "uuid" + +new Date
 
+var
+	/** @const */
+	UUID_PREFIX = "uuid" + +new Date
 	/** @const */
 	, _hasOwnProperty = Function.prototype.call.bind(Object.prototype.hasOwnProperty)
 	/** @const */
@@ -122,6 +121,10 @@ var UUID_PREFIX = "uuid" + +new Date
 
 	, _DOMParser
 
+	, _FormData_encodeSimpleFormData
+	, _FormData_encodeDifficaltFormData
+	, _FormData_shim_send
+
 	, UUID = 1
 
 	, _Document = global["Document"] || global["HTMLDocument"]
@@ -130,16 +133,39 @@ var UUID_PREFIX = "uuid" + +new Date
 
 	, IEBinaryToArray_ByteStr__NAME = __GCC__IELT10_SUPPORT__ && UUID_PREFIX + "IEBinaryToArray_ByteStr"
 
-	, removeScriptTagsFromHTML
+	, _document_createEvent = document.createEvent || document.createEventObject
+	, _Event_prototype
+	, _ProgressEvent = global["ProgressEvent"]
+	, _shimed_ProgressEvent
+	, _ProgressEvent_prototype_initProgressEvent
 
 	, IS_FILE_SUPPORT = "File" in global
 	, IS_XHR_SUPPORT_SEND_AS_BINARY = "sendAsBinary" in _test_XHR
 	, IS_XHR_IMPLIMENT_EVENT_TARGET = "addEventListener" in _test_XHR
-
+	, IS_XHR_SUPPORT_ON_EVENTS = "onload" in _test_XHR
+	, IS_XHR_SUPPORT_ONPROGRESS = "onprogress" in _test_XHR
+	, IS_PROGRESS_EVENT_AS_CONSTRUCTOR_SUPPORT = _ProgressEvent && (function() {
+			var event;
+			try {
+				event = new _ProgressEvent("load");
+			}
+			catch(e) {}
+			return event && event.type == "load";
+		})()
+	, _xhr_onevents = IS_XHR_SUPPORT_ON_EVENTS || ["load", "error", "abort", "loadend", "loadstart", "progress", "timeout"]
+	, XMLHttpRequest2_onevent
+	, convertResponseBodyToText
+	/** @const */
+	, _throwDOMException = function(errStr) {
+		var ex = Object.create(DOMException.prototype);
+		ex.code = DOMException[errStr];
+		ex.message = errStr +': DOM Exception ' + ex.code;
+		throw ex;
+	}
 ;
 
 if(__GCC__IELT10_SUPPORT__) {
-	function convertResponseBodyToText(byteArray) {
+	convertResponseBodyToText = function(byteArray) {
 		// http://jsperf.com/vbscript-binary-download/6
 		var scrambledStr;
 		try {
@@ -348,11 +374,11 @@ if(!IS_XHR_SUPPORT_FORMDATA) {
 				result += "Content-Disposition: form-data; name=\""+ name +"\";\r\n\r\n";
 				result += value + "\r\n";
 			}
-		};
+		}
 		result += "--" + boundary +"--";
 		
 		return result;
-	}
+	};
 
 
 	/**
@@ -360,11 +386,13 @@ if(!IS_XHR_SUPPORT_FORMDATA) {
 	 * https://developer.mozilla.org/en/DOM/XMLHttpRequest/FormData/Using_FormData_Objects
 	 * @constructor
 	 */
-	_FormData = function(_form) {
+	function _local_scope_FormData(_form) {
 		var options = this["_options"] = {}
-			, _ = this["_"] = {}
+			, _ = {}
 		;
 		this["__shim__"] = true;
+		/** @type {Object} */
+		this["_"] = _;
 
 		_.filesCount = 0;
 		_.pairs = {};
@@ -372,7 +400,7 @@ if(!IS_XHR_SUPPORT_FORMDATA) {
 		if(_form) {
 			for(var i = 0, l = _form.length ; i < l ; i++) {
 				this["append"](_form[i].name, _form[i].value, _form[i].type, _form[i]);
-			};
+			}
 
 			["method", "action", "enctype", "accept-charset"].forEach(function(attr, attrValue) {
 				if((attrValue = _form.getAttribute(attr)) != null) {
@@ -380,8 +408,10 @@ if(!IS_XHR_SUPPORT_FORMDATA) {
 				}
 			}, this);
 		}
-	};
-	
+	}
+
+	_FormData = _local_scope_FormData;//_local_scope_FormData done for GCC
+
 	_FormData.prototype = {
 		constructor : _FormData
 		, "append" : function(name, value) {
@@ -399,7 +429,7 @@ if(!IS_XHR_SUPPORT_FORMDATA) {
 		, toString : function() {return "[object FormData]"}
 	};
 	
-	/** @this {_FormData} */
+	/** @this {_local_scope_FormData} */
 	_FormData_shim_send = function(_shim_XHR2_object, cors) {
 		var thisObj = this
 			, _ = thisObj["_"]
@@ -425,7 +455,7 @@ if(!IS_XHR_SUPPORT_FORMDATA) {
 			frameId,
 			prevs,
 			i = 0,
-			l = this._.filesCount,
+			l = this["_"].filesCount,
 			fileInputs = l !== 0,
 			fileInput,
 			tmp,
@@ -452,9 +482,9 @@ if(!IS_XHR_SUPPORT_FORMDATA) {
 				this.setAttribute(attr, options[attr]);
 			}, form);
 
-			Object.keys(this._pairs).forEach(function(name) {
+			Object.keys(this["_"].pairs).forEach(function(name) {
 				var input = document.createElement("input"),
-					value = this._pairs[name];
+					value = this["_"].pairs[name];
 
 				input.type = "hidden";
 				input.name = name;
@@ -645,16 +675,81 @@ function _prepeareDocumentDataForSending(_document, xhr) {
 	return serializedDocument;
 }
 
+if(!IS_PROGRESS_EVENT_AS_CONSTRUCTOR_SUPPORT) {//ProgressEvent shim
+	_Event_prototype = global["Event"] && global["Event"].prototype || {};
+
+	/**
+	 * The initProgressEvent method must initialize the event in a manner analogous to the similarly-named method in the DOM Events interfaces.
+	 * @param {string} typeArg
+	 * @param {boolean} canBubbleArg
+	 * @param {boolean} cancelableArg
+	 * @param {boolean} lengthComputableArg
+	 * @param {number} loadedArg
+	 * @param {number} totalArg
+	 */
+	_ProgressEvent_prototype_initProgressEvent = function(typeArg, canBubbleArg, cancelableArg, lengthComputableArg, loadedArg, totalArg) {
+		this.initEvent(typeArg, canBubbleArg, cancelableArg);
+		this["lengthComputable"] = lengthComputableArg;
+		this["loaded"] = loadedArg;
+		this["total"] = totalArg;
+	};
+
+	_shimed_ProgressEvent = function(eventType, dict) {
+		var e;
+
+		try {
+			e = _document_createEvent("ProgressEvent");
+		}
+		catch(__e__) {
+			e = _document_createEvent("Event");
+			e["initProgressEvent"] = _ProgressEvent_prototype_initProgressEvent;
+		}
+
+		//TODO::
+		// dict.lengthComputable
+		// dict.loadedArg
+		// dict.totalArg
+		this.initProgressEvent(eventType, dict.bubbles || false, dict.cancelable || false, false, 0, 0);
+
+		return e;
+	};
+	if(!(_shimed_ProgressEvent.prototype = _ProgressEvent && _ProgressEvent.prototype)) {
+		try {
+			_shimed_ProgressEvent.prototype = Object.create(_Event_prototype);
+			_shimed_ProgressEvent.prototype.constructor = _ProgressEvent;
+		}
+		catch(__e__) {
+			_ProgressEvent.prototype = _Event_prototype;
+		}
+	}
+
+	global["ProgressEvent"] = _shimed_ProgressEvent;
+}
+
+if(!IS_XHR_SUPPORT_ON_EVENTS) {
+	/**
+	 * @param {Event} e
+	 * @this {Object(thisObj: Object, funcName: string)}
+	 */
+	XMLHttpRequest2_onevent = function(suspectEventType, eventObj) {
+		eventObj && eventObj.type == suspectEventType || (eventObj = _shimed_ProgressEvent(suspectEventType));
+		this.dispatchEvent(this);
+	}
+}
 
 /**
  * @constructor
  */
 function XMLHttpRequest2() {
 	if(IS_XHR_SUPPORT_UPLOAD) {
-		//TODO:: this.upload = new _XMLHttpRequestUpload(this.XHR1.upload);
+		Object.defineProperty(this, "upload", {
+			"get" : function() {
+				return this.XHR1.upload;
+			}
+		});
 	}
 	else {
-		//TODO:: new _XMLHttpRequestUpload;
+		//TODO:: this.upload = new _XMLHttpRequestUpload(this.XHR1.upload);
 	}
 	this._reset();
 
@@ -664,10 +759,14 @@ function XMLHttpRequest2() {
 	this.timeout = 0;
 	/** @type {boolean} */
 	this.withCredentials = false;
-	/** @type {String} */
+	/** @type {(string|null)} */
 	this.responseType = "";
 	/** @type {number} */
 	this.status = 0;
+	/** @type {XMLHttpRequest} */
+	this.XHR1 = getNewXhr();
+
+	this._onreadystatechange = this._onreadystatechange.bind(this);
 }
 XMLHttpRequest2["UNSET"] = 0;
 XMLHttpRequest2["OPENED"] = 1;
@@ -729,14 +828,14 @@ XMLHttpRequest2.prototype = {
 	, _reset : function() {
 		/** @type {number} */
 		this.readyState = 0;
-		/** @type {(Object|String|ArrayBuffer|Blob|Document)} */
+		/** @type {(Object|string|ArrayBuffer|Blob|Document)} */
 		this.response = null;
 
-		/** @type {String} */
+		/** @type {(string|null)} */
 		this.responseText = "";
 		/** @type {Object} */
 		this.responseXML = null;
-		/** @type {String} */
+		/** @type {string} */
 		this.statusText = "";
 
 		if(!IS_XHR_SUPPORT_RESPONSE) {
@@ -765,12 +864,15 @@ XMLHttpRequest2.prototype = {
 		// Firefox throws exceptions when accessing properties
 		// of an xhr when a network error occured
 		// http://helpful.knobs-dials.com/index.php/Component_returned_failure_code:_0x80040111_(NS_ERROR_NOT_AVAILABLE)
+		// http://helpful.knobs-dials.com/index.php/0x80004005_(NS_ERROR_FAILURE)_and_other_firefox_errors#0x80040111_.28NS_ERROR_NOT_AVAILABLE.29
 
 		if ((this.readyState = xhr.readyState) == 4) {
+			//TODO::if(!IS_XHR_SUPPORT_ON_EVENTS)thisObj.dispatchEvent(onloadend)
+
 			_status = xhr.status;
 			try { // [jQuery] Firefox throws an exception when accessing statusText for faulty cross-domain requests
 				_statusText = xhr.statusText;
-			} catch( e ) { }
+			} catch( __e__ ) { }
 
 			_responseHeaders = this.XHR1.getAllResponseHeaders();
 
@@ -810,7 +912,7 @@ XMLHttpRequest2.prototype = {
 					this.responseText = xhr.responseText;
 					this.responseXML = xhr.responseXML;
 				}
-				catch(e) {
+				catch(__e__) {
 					this.responseText = "";
 					this.responseXML = null;
 				}
@@ -848,7 +950,7 @@ XMLHttpRequest2.prototype = {
 							try {
 								this.response = JSON.parse(xhr.responseText);
 							}
-							catch(e) {
+							catch(__e__) {
 								this.response = null;
 							}
 						break;
@@ -890,26 +992,21 @@ XMLHttpRequest2.prototype = {
 
 				this.XHR1.onreadystatechange = _function_noop;
 			}
-			else {
-				this._onerror(e);
+			else if(!IS_XHR_SUPPORT_ON_EVENTS) {
+				this.dispatchEvent(_shimed_ProgressEvent("error"));
 			}
 
-			this._onload(e);
+			if(!IS_XHR_SUPPORT_ON_EVENTS) {
+				this.dispatchEvent(_shimed_ProgressEvent("load"));
+			}
+		}
+		else {
+			if(!IS_XHR_SUPPORT_ON_EVENTS) {
+				this.dispatchEvent(_shimed_ProgressEvent("progress"));
+			}
 		}
 
 		if(this.onreadystatechange)this.onreadystatechange(e);
-	}
-	, _onload : function(e) {
-		if(!e || e.type != "load")e = new Event("load");
-		this.dispatchEvent(e);
-	}
-	, _onerror : function(e) {
-		if(!e || e.type != "error")e = new Event("error");
-		this.dispatchEvent(e);
-	}
-	, _ontimeout : function(e) {
-		if(!e || e.type != "timeout")e = new Event("timeout");
-		this.dispatchEvent(e);
 	}
 	, _fakeFormDataWithFileInputs_ondone : function(response) {
 		var xhr = this.XHR1 = {};
@@ -936,24 +1033,51 @@ XMLHttpRequest2.prototype = {
 	, "getResponseHeader" : function (header) {
 		return this.XHR1.getResponseHeader(header);
 	}
+	/*
+	client.open(method, url, async, user, password)
+
+	 Sets the request method, request URL, synchronous flag, request username, and request password.
+
+	 Throws a "SyntaxError" exception if one of the following is true:
+	  - method is not a valid HTTP method.
+	  - url cannot be resolved.
+	  - url contains the "user:password" format in the userinfo production.
+
+	 Throws a "SecurityError" exception if method is a case-insensitive match for CONNECT, TRACE or TRACK.
+
+	 Throws an "InvalidAccessError" exception if one of the following is true:
+	  - Either user or password is passed as argument and the origin of url does not match the XMLHttpRequest origin.
+	  - There is an associated XMLHttpRequest document and either the timeout attribute is not zero, the withCredentials attribute is true, or the responseType attribute is not the empty string.
+	*/
 	, "open" : function(method, uri, isAsync, username, password) {
-		this.XHR1 = getNewXhr();
+		// The open(method, url, async, user, password) method must run these steps (unless otherwise indicated):
 
-		this._reset();
+		// http://dvcs.w3.org/hg/xhr/raw-file/tip/Overview.html#the-open()-method
 
-		this.__method__ = method;
-		this.__uri__ = uri;
-		this.__isAsync__ = isAsync;
+		var thisObj = this
+			, _timeout = +thisObj.timeout >>> 0
+			, xhr = thisObj.XHR1
+		;
+
+		thisObj._reset();
+
+		isAsync = isAsync === void 0 ? true : isAsync;
+		thisObj.__method__ = method;
+		thisObj.__uri__ = uri;
+		thisObj.__isAsync__ = isAsync;
+
+		if(xhr.withCredentials != thisObj.withCredentials)xhr.withCredentials = thisObj.withCredentials;
+		if(xhr.timeout != _timeout)xhr.timeout = _timeout;
 
 		// [jQuery]
 		// Open the socket
 		// Passing null username, generates a login popup on Opera (http://bugs.jquery.com/ticket/2865)
 		if (username) {
-			this.XHR1.open(method, uri, isAsync, username, password);
+			thisObj.XHR1.open(method, uri, isAsync, username, password);
 		} else {
-			this.XHR1.open(method, uri, isAsync);
+			thisObj.XHR1.open(method, uri, isAsync);
 		}
-		this.status = this.XHR1.status;
+		thisObj.readyState = thisObj.XHR1.readyState;
 	}
 	, "overrideMimeType" : function() {
 		/* TODO:: ???
@@ -982,7 +1106,12 @@ XMLHttpRequest2.prototype = {
 		   , cors = !IS_XHR_SUPPORT_CORS && CORS_test(thisObj.__uri__)
 		   , doNotSend_as_XHR
 		   , _responseType = thisObj.responseType
+		   , _timeout = +thisObj.timeout >>> 0
 		;
+
+		if(thisObj.readyState != 1)_throwDOMException("INVALID_STATE_ERR");
+
+		//TODO::check if  11. If async is false, there is an associated XMLHttpRequest document and either the timeout attribute value is not zero, the withCredentials attribute value is true, or the responseType attribute value is not the empty string, throw an "InvalidAccessError" exception and terminate these steps.
 		
 		if(thisObj.__method__ != "POST") {//TODO:: what about FormData?
 			data = null;
@@ -1015,16 +1144,26 @@ XMLHttpRequest2.prototype = {
 		if(IS_XHR_SUPPORT_MOZRESPONSETYPE) {//FF
 			xhr["mozResponseType"] = thisObj.responseType;
 		}
-		else {
-			xhr.responseType = IS_XHR_SUPPORT_RESPONSE && _responseType in XHR_SUPPORT_MAP_RESPONSETYPE && _responseType || "";
+		else if(xhr.responseType !== _responseType && IS_XHR_SUPPORT_RESPONSE && _responseType in XHR_SUPPORT_MAP_RESPONSETYPE && _responseType) {
+			xhr.responseType = _responseType;
 		}
 
-		xhr.withCredentials = thisObj.withCredentials;
-		xhr.timeout = +thisObj.timeout >>> 0;
-		if(thisObj.timeout !== 0 && !IS_XHR_SUPPORT_TIMEOUT)thisObj._time = +new Date;
-		xhr.ontimeout = thisObj._ontimeout;
+		// Check second time wile getters/setters not implemented
+		if(xhr.withCredentials != thisObj.withCredentials)xhr.withCredentials = thisObj.withCredentials;
+		if(xhr.timeout != _timeout)xhr.timeout = _timeout;
 
-		xhr.onreadystatechange = this._onreadystatechange.bind(this);
+		if(thisObj.timeout !== 0 && !IS_XHR_SUPPORT_TIMEOUT)thisObj._time = +new Date;
+		if(!IS_XHR_SUPPORT_ON_EVENTS) {
+			_xhr_onevents.forEach(function(func) {
+				func = "on" + func;
+				this[func] = XMLHttpRequest2_onevent.bind(this, func);
+			}, thisObj);
+		}
+		if(IS_XHR_SUPPORT_ONPROGRESS) {//TODO:: can we use just IS_XHR_SUPPORT_ON_EVENTS ?
+			xhr.onprogress = thisObj._onprogress;
+		}
+
+		xhr.onreadystatechange = this._onreadystatechange;
 
 		if(data && typeof data == "object") {
 			if(data instanceof _FormData) {
@@ -1082,6 +1221,8 @@ XMLHttpRequest2.prototype = {
 				thisObj.XHR1.send(data);
 			}
 
+			//TODO::if(!IS_XHR_SUPPORT_ON_EVENTS)thisObj.dispatchEvent(onloadstart)
+
 			if(cors && cors.state == 1) {
 				try {
 					document.domain = cors.from;
@@ -1096,8 +1237,8 @@ XMLHttpRequest2.prototype = {
 		// if we're in sync mode or it's in cache
 		// and has been retrieved directly (IE6 & IE7)
 		// we need to manually fire the callback
-		if(this.__isAsync__ && thisObj.XHR1.readyState === 4) {
-			this.dispatchEvent(new Event("load"));
+		if(this.__isAsync__ && thisObj.XHR1.readyState === 4 && !IS_XHR_SUPPORT_ON_EVENTS) {
+			this.dispatchEvent(_shimed_ProgressEvent("load"));
 		}
 	}
 	, "UNSET" : 0
