@@ -1,7 +1,7 @@
 /** @license XMLHttpRequest Level 2 polyfill | @version 0.1 | MIT License | github.com/termi */
 
 // ==ClosureCompiler==
-// @compilation_level ADVANCED_OPTIMIZATIONS
+// @compilation_level SIMPLE_OPTIMIZATIONS
 // @warning_level VERBOSE
 // @jscomp_warning missingProperties
 // @output_file_name XHR2.js
@@ -12,6 +12,7 @@
 sendAsBinary shim for browsers with native Uint8Array http://javascript0.org/wiki/Portable_sendAsBinary
 http://habrahabr.ru/post/120917/ (Новые возможности XMLHttpRequest2)
 http://blogs.msdn.com/b/ie/archive/2012/02/09/cors-for-xhr-in-ie10.aspx
+https://raw.github.com/jquery/jquery/master/src/ajax.js
 
 About XDomainRequest
  http://msdn.microsoft.com/en-us/library/dd573303(v=VS.85).aspx
@@ -39,10 +40,10 @@ var __GCC__IELT10_SUPPORT__ = true;
 
 
 // CONFIG START
-/** @type {string} @const */
-var FLASH_CORS_TRANSPORT_SRC = "/cors/flashCORS.swf";
-/** @type {string} @const */
-var IFRAME_CORS_TRANSPORT_DEFAULT_SRC = "/__CORS_iframe_remote_domain.html";
+/* * @type {string} @const */
+//var FLASH_CORS_TRANSPORT_SRC = "/cors/flashCORS.swf";
+/* * @type {string} @const */
+//var IFRAME_CORS_TRANSPORT_DEFAULT_SRC = "/__CORS_iframe_remote_domain.html";
 //CONFIG END
 
 (function(global) {
@@ -112,8 +113,20 @@ if(
 var
 	/** @const */
 	UUID_PREFIX = "uuid" + +new Date
+	/** Use native "bind" or unsafe bind for service and performance needs
+	 * @const
+	 * @param {Object} object
+	 * @param {...} var_args
+	 * @return {Function} */
+	, _unsafe_Function_bind_ = Function.prototype.bind || function(object, var_args) {
+		var __method = this,
+			args = Array.prototype.slice.call(arguments, 1);
+		return function () {
+			return _Function_apply_.call(__method, object, args.concat(Array.prototype.slice.call(arguments)));
+		}
+	}
 	/** @const */
-	, _hasOwnProperty = Function.prototype.call.bind(Object.prototype.hasOwnProperty)
+	, _hasOwnProperty = _unsafe_Function_bind_.call(Function.prototype.call, Object.prototype.hasOwnProperty)
 	/** @const */
 	, _Function_apply_ = Function.prototype.apply
 
@@ -239,9 +252,9 @@ if("DOMParser" in global) {
 		DOMParser.prototype["parseFromString"] = function(markup, type) {
 			if (/^\s*text\/html\s*(?:;|$)/i.test(type)) {
 				var
-				  doc = document.implementation.createHTMLDocument("")
-				, doc_elt = doc.documentElement
-				, first_elt
+					doc = document.implementation.createHTMLDocument("")
+					, doc_elt = doc.documentElement
+					, first_elt
 				;
 
 				doc_elt.innerHTML = markup;
@@ -284,7 +297,7 @@ else if(__GCC__INCLUDE_DOMPARSER_SHIM__) {//IE < 9, Old Safary
 				document.body.appendChild(iframe);
 				newHTMLDocument = iframe.contentDocument || iframe.contentWindow.document;
 
-				newHTMLDocument["__destroy__"] = function() {
+				_unsafe_Function_bind_.call(newHTMLDocument["__destroy__"] = function() {
 					var _doc = this.contentWindow.document;
 					_doc.documentElement.innerHTML = "";
 					_doc["_"] = _doc.documentElement["_"] = void 0;
@@ -297,7 +310,7 @@ else if(__GCC__INCLUDE_DOMPARSER_SHIM__) {//IE < 9, Old Safary
 					 })
 					 */
 					document.body.removeChild(this);
-				}.bind(iframe);
+				}, iframe);
 
 				markup = iframe = void 0;
 
@@ -574,7 +587,7 @@ _XMLHttpRequestUpload.prototype = {
 /**
  * Check for CORS mode
  * @param uri
- * @return {(Object(state: number, from:string, to: string, fromProtocol: string, toProtocol: string)|null)}  return null if the is no CORS. state==1 if CORS with current subdomain, state==2 if CORS with same protocols, state==3 if CORS with same domains and diff protocols, state==4 diff protocols and domains
+ * @return {({state: number, from:string, to: string, fromProtocol: string, toProtocol: string}|null)}  return null if the is no CORS. state==1 if CORS with current subdomain, state==2 if CORS with same protocols, state==3 if CORS with same domains and diff protocols, state==4 diff protocols and domains
  */
 function CORS_test(uri) {
 	var _link = CORS_test.link || (CORS_test.link = document.createElement("a")),
@@ -728,12 +741,13 @@ if(!IS_PROGRESS_EVENT_AS_CONSTRUCTOR_SUPPORT) {//ProgressEvent shim
 
 if(!IS_XHR_SUPPORT_ON_EVENTS) {
 	/**
-	 * @param {Event} e
-	 * @this {Object(thisObj: Object, funcName: string)}
+	 * @param {string} suspectEventType
+	 * @param {Event} eventObj
+	 * @this {XMLHttpRequest2}
 	 */
 	XMLHttpRequest2_onevent = function(suspectEventType, eventObj) {
 		eventObj && eventObj.type == suspectEventType || (eventObj = _shimed_ProgressEvent(suspectEventType));
-		this.dispatchEvent(this);
+		this.dispatchEvent(eventObj);
 	}
 }
 
@@ -741,14 +755,7 @@ if(!IS_XHR_SUPPORT_ON_EVENTS) {
  * @constructor
  */
 function XMLHttpRequest2() {
-	if(IS_XHR_SUPPORT_UPLOAD) {
-		Object.defineProperty(this, "upload", {
-			"get" : function() {
-				return this.XHR1.upload;
-			}
-		});
-	}
-	else {
+	if(!IS_XHR_SUPPORT_UPLOAD) {
 		//TODO:: this.upload = new _XMLHttpRequestUpload(this.XHR1.upload);
 	}
 	this._reset();
@@ -766,7 +773,7 @@ function XMLHttpRequest2() {
 	/** @type {XMLHttpRequest} */
 	this.XHR1 = getNewXhr();
 
-	this._onreadystatechange = this._onreadystatechange.bind(this);
+	this._onreadystatechange = _unsafe_Function_bind_.call(this._onreadystatechange, this);
 }
 XMLHttpRequest2["UNSET"] = 0;
 XMLHttpRequest2["OPENED"] = 1;
@@ -775,7 +782,7 @@ XMLHttpRequest2["LOADING"] = 3;
 XMLHttpRequest2["DONE"] = 4;
 XMLHttpRequest2.prototype = {
 	constructor : XMLHttpRequest2
-	, addEventListener : IS_XHR_IMPLIMENT_EVENT_TARGET ? 
+	, "addEventListener" : IS_XHR_IMPLIMENT_EVENT_TARGET ? 
 		function() {
 			return this.XHR1.addEventListener.apply(this.XHR1, arguments)
 		}
@@ -787,7 +794,7 @@ XMLHttpRequest2.prototype = {
 			if(!(a = b["uuid"]))a = b["uuid"] = UUID_PREFIX + ++UUID;
 			if(!_[a])_[a] = b;
 		}
-	, dispatchEvent : IS_XHR_IMPLIMENT_EVENT_TARGET ? 
+	, "dispatchEvent" : IS_XHR_IMPLIMENT_EVENT_TARGET ? 
 		function() {
 			return this.XHR1.dispatchEvent.apply(this.XHR1, arguments)
 		}
@@ -814,7 +821,7 @@ XMLHttpRequest2.prototype = {
 			} while(handler = _[keys.shift()]);
 			
 		}
-	, removeEventListener : IS_XHR_IMPLIMENT_EVENT_TARGET ? 
+	, "removeEventListener" : IS_XHR_IMPLIMENT_EVENT_TARGET ? 
 		function() {
 			return this.XHR1.removeEventListener.apply(this.XHR1, arguments)
 		}
@@ -828,7 +835,7 @@ XMLHttpRequest2.prototype = {
 	, _reset : function() {
 		/** @type {number} */
 		this.readyState = 0;
-		/** @type {(Object|string|ArrayBuffer|Blob|Document)} */
+		/** @type {(Object|string|ArrayBuffer|Blob|Document|*)} */
 		this.response = null;
 
 		/** @type {(string|null)} */
@@ -1008,21 +1015,29 @@ XMLHttpRequest2.prototype = {
 
 		if(this.onreadystatechange)this.onreadystatechange(e);
 	}
+	/**
+	 * @param {*} response
+	 * @this {XMLHttpRequest2}
+	 */
 	, _fakeFormDataWithFileInputs_ondone : function(response) {
 		var xhr = this.XHR1 = {};
 		xhr.readyState = 4;
 		xhr.status = 200;
 		xhr.responseText = xhr.response = xhr.responseBody = response;
 		xhr.responseXML = null;
-		xhr._onreadystatechange({});
+		xhr.onreadystatechange({});
 	}
+	/**
+	 * @param {*} response
+	 * @this {XMLHttpRequest2}
+	 */
 	, _fakeFormDataWithFileInputs_error : function(response) {
 		var xhr = this.XHR1 = {};
 		xhr.readyState = 4;
 		xhr.status = response["status"] || -1;//error
 		xhr.responseText = xhr.response = xhr.responseBody = "";
 		xhr.responseXML = null;
-		xhr._onreadystatechange({});
+		xhr.onreadystatechange({});
 	}
 	, "abort" : function() {
 		this.XHR1.abort.apply(this.XHR1, arguments);
@@ -1034,6 +1049,8 @@ XMLHttpRequest2.prototype = {
 		return this.XHR1.getResponseHeader(header);
 	}
 	/*
+	http://dvcs.w3.org/hg/xhr/raw-file/tip/Overview.html#the-open()-method
+
 	client.open(method, url, async, user, password)
 
 	 Sets the request method, request URL, synchronous flag, request username, and request password.
@@ -1050,9 +1067,10 @@ XMLHttpRequest2.prototype = {
 	  - There is an associated XMLHttpRequest document and either the timeout attribute is not zero, the withCredentials attribute is true, or the responseType attribute is not the empty string.
 	*/
 	, "open" : function(method, uri, isAsync, username, password) {
-		// The open(method, url, async, user, password) method must run these steps (unless otherwise indicated):
-
-		// http://dvcs.w3.org/hg/xhr/raw-file/tip/Overview.html#the-open()-method
+		if(!("open" in this.XHR1)) {
+			//if this.XHR1 is a fake temporary object
+			this.XHR1 = getNewXhr();
+		}
 
 		var thisObj = this
 			, _timeout = +thisObj.timeout >>> 0
@@ -1081,10 +1099,10 @@ XMLHttpRequest2.prototype = {
 	}
 	, "overrideMimeType" : function() {
 		/* TODO:: ???
-			if (xml.overrideMimeType) {
-			    xml.overrideMimeType('text/plain; charset=x-user-defined');
+			if (xhr.overrideMimeType) {
+			    xhr.overrideMimeType('text/plain; charset=x-user-defined');
 			} else {
-			    xml.setRequestHeader('Accept-Charset', 'x-user-defined');
+			    xhr.setRequestHeader('Accept-Charset', 'x-user-defined');
 			}
 		*/
 		this.XHR1.overrideMimeType.apply(this.XHR1, arguments);
@@ -1156,7 +1174,7 @@ XMLHttpRequest2.prototype = {
 		if(!IS_XHR_SUPPORT_ON_EVENTS) {
 			_xhr_onevents.forEach(function(func) {
 				func = "on" + func;
-				this[func] = XMLHttpRequest2_onevent.bind(this, func);
+				this[func] = _unsafe_Function_bind_.call(XMLHttpRequest2_onevent, this, func);
 			}, thisObj);
 		}
 		if(IS_XHR_SUPPORT_ONPROGRESS) {//TODO:: can we use just IS_XHR_SUPPORT_ON_EVENTS ?
@@ -1247,11 +1265,20 @@ XMLHttpRequest2.prototype = {
 	, "LOADING" : 3
 	, "DONE" : 4
 };
+if(IS_XHR_SUPPORT_UPLOAD) {
+	Object.defineProperty(XMLHttpRequest2.prototype, "upload", {
+		"get" : function() {
+			return this.XHR1.upload;
+		}
+	});
+}
 
 if(!("overrideMimeType" in _test_XHR))delete XMLHttpRequest2.prototype["overrideMimeType"];
 
 //EXPORT
-global["FormData"] = _FormData;
+if(!IS_XHR_SUPPORT_FORMDATA) {
+	global["FormData"] = _FormData;
+}
 global["XMLHttpRequest"] = XMLHttpRequest2;
 //TODO::global["XMLHttpRequestUpload"] = _XMLHttpRequestUpload;
 
