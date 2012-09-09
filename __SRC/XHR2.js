@@ -94,7 +94,6 @@ var
 	, IS_XHR_SUPPORT_FORMDATA = !!_FormData
 	, IS_XHR_SUPPORT_UPLOAD = "upload" in _test_XHR
 	, IS_XHR_SUPPORT_TIMEOUT = "timeout" in _test_XHR
-	, IS_XHR_SUPPORT_MOZRESPONSETYPE = "mozResponseType" in _test_XHR
 	, IS_XHR_SUPPORT_RESPONSE = "response" in _test_XHR
 	, IS_XHR_SUPPORT_WITHCREDENTIALS = "withCredentials" in _test_XHR
 	, IS_XDOMAINREQUEST_SUPPORT = "XDomainRequest" in global
@@ -944,17 +943,10 @@ XMLHttpRequest2_properties = {
 				delete this.nativeXHR.shimResponseType;
 				
 				xhr.responseType = val;
-				if(IS_XHR_SUPPORT_MOZRESPONSETYPE) {//FF
-					xhr["mozResponseType"] = "";
-				}
 			}
 			else {
 				if(xhr.readyState > 1) {
 					throw new Error("INVALID_STATE_ERR");
-				}
-				//try{ this.nativeXHR.response = "" } catch(__e__){}
-				if(IS_XHR_SUPPORT_MOZRESPONSETYPE) {//FF
-					xhr["mozResponseType"] = val;
 				}
 
 				xhr.shimResponseType = val;
