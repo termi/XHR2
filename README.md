@@ -10,7 +10,7 @@ XMLHttpRequest Level 2 shim
 ## Goal
 - Made work with XHR2 easy and transparent in older browsers
 - FormData and CORS
-- xhr.response and xhr.responseType = [arraybuffer, json, document, text](don't know how to emulate xhr.responseType=blob)
+- xhr.response and xhr.responseType = arraybuffer/json/document/text (don't know how to emulate xhr.responseType=blob)
 - xhr.timeout
 - support for IE6+ (working in progress)
 
