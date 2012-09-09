@@ -102,6 +102,8 @@ var
 	, XMLHttpRequest2_createNewCORSXhr
 	, THE_BEST_BROWSER_EVAR = true
 	, XHR_SUPPORT_MAP_RESPONSETYPE = IS_XHR_SUPPORT_RESPONSE && Object.keys(_responseType_values_map).reduce(function(result, key) {
+		//Do we need more bulletproof feature detection ?
+		// http://stackoverflow.com/questions/8926505/how-to-feature-detect-if-xmlhttprequest-supports-responsetype-arraybuffer/8928272#8928272
 		try {
 			_test_XHR.responseType = key;
 		}
@@ -954,9 +956,8 @@ XMLHttpRequest2_properties = {
 				if(IS_XHR_SUPPORT_MOZRESPONSETYPE) {//FF
 					xhr["mozResponseType"] = val;
 				}
-				else {
-					xhr.shimResponseType = val;
-				}
+
+				xhr.shimResponseType = val;
 			}
 			return val;
 		}
