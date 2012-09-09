@@ -1,7 +1,7 @@
 /** @license XMLHttpRequest Level 2 polyfill | @version 0.2 | MIT License | github.com/termi */
 
 // ==ClosureCompiler==
-// @compilation_level SIMPLE_OPTIMIZATIONS
+// @compilation_level ADVANCED_OPTIMIZATIONS
 // @warning_level VERBOSE
 // @jscomp_warning missingProperties
 // @output_file_name XHR2.js
@@ -41,7 +41,9 @@ http://stackoverflow.com/questions/11284728/how-do-i-access-8-bit-binary-data-fr
 /** @define {boolean} */
 var __GCC__INCLUDE_DOMPARSER_SHIM__ = false;
 /** @define {boolean} */
-var __GCC__IELT10_SUPPORT__ = true;
+var __GCC__IELT10_SUPPORT__ = false;//for IE9
+/** @define {boolean} */
+var __GCC__IELT9_SUPPORT__ = true;//for IE8-
 // [[[|||---=== GCC DEFINES END ===---|||]]]
 
 
@@ -57,20 +59,27 @@ var __GCC__IELT10_SUPPORT__ = true;
 
 var
 	/** type {Object} original XHR */
-		_XMLHttpRequest_ =  global.XMLHttpRequest
+	_XMLHttpRequest_ =  global.XMLHttpRequest
 
 	, getNewXhr =
-		_XMLHttpRequest_ ?
+		__GCC__IELT10_SUPPORT__ ?
+			_XMLHttpRequest_ ?
+				function() {
+					var result = new _XMLHttpRequest_;
+					result.xhrType = 1;//Simple XHR
+					return result;
+				}
+				:
+				function() {
+					var result = new ActiveXObject("Microsoft.XMLHTTP");
+					result.xhrType = 2;//Simple XHR via ActiveX
+					return result;
+				}
+			:
 			function() {
 				var result = new _XMLHttpRequest_;
 				result.xhrType = 1;//Simple XHR
-				return  resulr;
-			}
-			:
-			function() {
-				var result = new ActiveXObject("Microsoft.XMLHTTP");
-				result.xhrType = 2;//Simple XHR via ActiveX
-				return  resulr;
+				return result;
 			}
 
 	, _test_XHR = getNewXhr()
@@ -79,7 +88,7 @@ var
 		, "document" : void 0
 		, "arraybuffer" : void 0
 		, "text" : void 0
-		//TODO::, "blob" : void 0//The is no shim for sending blob for now
+		, "blob" : void 0//TODO:: The is no shim for sending/getting blob for now
 	}
 	, _FormData = global["FormData"]
 	, IS_XHR_SUPPORT_FORMDATA = !!_FormData
@@ -102,12 +111,52 @@ var
 			result[key] = void 0;
 		}
 		else {
-			THE_BEST_BROWSER_EVAR = false;
+			THE_BEST_BROWSER_EVAR = false;// :[
 		}
 
 		return result;
 	}, {})
-	;
+;
+
+
+//Test Opera for REAL support xhr.responseType = "document"
+//Sorry for browser sniffing, but only Opera does lie that it support xhr.responseType = "blob" and xhr.responseType = "document", but it not true
+//Opera support only XML in xhr.responseType = "document"
+if(_XMLHttpRequest_ && IS_XHR_SUPPORT_RESPONSE && global["opera"]) {
+	try {
+		["blob", "document", "document", false, "text/html", "text/xml"].some(function(item, index, array) {
+			if(item in XHR_SUPPORT_MAP_RESPONSETYPE) {
+
+				//PGh0bWw%2BPGRpdj50PC9kaXY%2BPC9odG1sPg0K - <html><div>t></div></html>
+				this.open("GET", "data:" + (array[index + 3] || array[index + 4]) + ";base64,PGh0bWw%2BPGRpdj50PC9kaXY%2BPC9odG1sPg0K", false);
+				this.responseType = "document";
+				this["onload"] = function() {
+					var notSupported;
+					try {
+						notSupported = this.response == null;
+					}
+					catch(e) {
+						//Uncaught exception: DOMException: NOT_SUPPORTED_ERR for xhr.responseType = "blob"
+						//Uncaught exception: DOMException: INVALID_STATE_ERR for xhr.responseType = "document" with html response from server
+						notSupported = true;
+					}
+					if(notSupported) {
+						THE_BEST_BROWSER_EVAR = false;
+						delete XHR_SUPPORT_MAP_RESPONSETYPE[item];
+					}
+				};
+				this.send();
+
+			}
+
+			if(item === false)return true;
+		}, new XMLHttpRequest);
+	}
+	catch(e) {
+		//Note: We do sync request with xhr.responseType != "" and Opera support
+		//Maybe in future, Opera will stop support sync request for requests with xhr.responseType != "" and will start fully support xhr.responseType = "blob" and xhr.responseType = "document"
+	}
+}
 
 if(
 	IS_XHR_SUPPORT_FORMDATA
@@ -116,16 +165,20 @@ if(
 		&& IS_XHR_SUPPORT_RESPONSE
 		&& THE_BEST_BROWSER_EVAR
 	) {
-	//Super browser
+	//Good browser
 	return;
 }
 
 
 
-
 var
+	/** Browser sniffing
+	 * GCC W U NO SUPPORT @cc ?
+	 * @type {boolean} */
+	_browser_msie = __GCC__IELT10_SUPPORT__ && window.eval && eval("/*@cc_on 1;@*/") && +((/msie (\d+)/i.exec(navigator.userAgent) || [])[1] || 0) || void 0
+
 	/** @const */
-	UUID_PREFIX = "uuid" + +new Date
+	, UUID_PREFIX = "uuid" + +new Date
 	/** @const */
 	, _hasOwnProperty = Function.prototype.call.bind(Object.prototype.hasOwnProperty)
 	/** @const */
@@ -147,7 +200,7 @@ var
 
 	, IEBinaryToArray_ByteStr__NAME = __GCC__IELT10_SUPPORT__ && UUID_PREFIX + "IEBinaryToArray_ByteStr"
 
-	, _document_createEvent = document.createEvent || document.createEventObject
+	, _document_createEvent = document.createEvent || __GCC__IELT10_SUPPORT__ && __GCC__IELT9_SUPPORT__ && document.createEventObject
 	, _Event_prototype
 	, _ProgressEvent = global["ProgressEvent"]
 	, _shimed_ProgressEvent
@@ -165,10 +218,17 @@ var
 		catch(e) {}
 		return event && event.type == "load";
 	})()
-	, _xhr_onevents = IS_XHR_SUPPORT_ON_EVENTS || ["load", "error", "abort", "loadend", "loadstart", "progress", "timeout"]
+	, _xhr_onevents = ["load", "error", "abort", "loadend", "loadstart", "progress", "timeout"]
 	, IS_XHR_SUPPORT_ON_EVENTS = "onload" in _test_XHR
-	, IS_XHR_SUPPORT_ONPROGRESS = "onprogress" in _test_XHR
-	, IS_XHR_SUPPORT_ONABORT = "onabort" in _test_XHR
+	, XHR_SUPPORT_MAP_ON_EVENTS = IS_XHR_SUPPORT_ON_EVENTS && _xhr_onevents.reduce(function(result, eventType) {
+		eventType = "on" + eventType;
+
+		result[eventType] = eventType in _test_XHR;
+
+		return result;
+	}, {})
+	//, IS_XHR_SUPPORT_ONPROGRESS = XHR_SUPPORT_MAP_ON_EVENTS["onprogress"]
+	, IS_XHR_SUPPORT_ONABORT = XHR_SUPPORT_MAP_ON_EVENTS["onabort"]
 	, XMLHttpRequest2_onevent
 	, convertResponseBodyToText
 /** @const */
@@ -188,15 +248,32 @@ var
 	
 	, _Object_defineProperty = Object.defineProperty
 	
-	, isObject_defineProperty_works_on_objects = (function() {
+	, IS_OBJECT_DEFINEPROPERTY_WORKS_ON_OBJECT = !(__GCC__IELT10_SUPPORT__ && __GCC__IELT9_SUPPORT__) || (function() {
 		try {
-			return _Object_defineProperty({}, "t", {get : function() {return 1}}).t === 1;
+			return _Object_defineProperty({}, "t", {get : function() {return 1}})["t"] === 1;
 		}
 		catch(e) {
 			return false;
 		}
 	})()
+	, __IElt9_createVBClass//this code ONLY for IE8-
+	, safe_get_outerHTML_for_FF_and_others
 ;
+
+if(__GCC__IELT10_SUPPORT__ && __GCC__IELT9_SUPPORT__ && _browser_msie && !IS_OBJECT_DEFINEPROPERTY_WORKS_ON_OBJECT) {//this code ONLY for IE8-
+	_Object_defineProperty = function(obj, propName, propDescription) {//prepeare object for __IElt9_createVBClass
+		if(!propDescription)return;
+
+		if("value" in propDescription)obj[propName] = propDescription["value"];
+		else {
+			if("get" in propDescription)obj["get " + propName] = propDescription["get"];
+			if("set" in propDescription)obj["set " + propName] = propDescription["set"];
+		}
+	}
+	__IElt9_createVBClass = function(__IElt9_class_constructor__, __IElt9_class_prototype__) {
+		//TODO::
+	}
+}
 
 function __setProperties(target, _donor) {
 	Object.keys(_donor).reduce(function(target, key) {
@@ -217,7 +294,6 @@ function __setProperties(target, _donor) {
 		return target;
 	}.bind(_donor), target);
 }
-
 
 if(__GCC__IELT10_SUPPORT__) {
 	convertResponseBodyToText = function(byteArray) {
@@ -686,6 +762,47 @@ function checkIsXML(elem) {
 	;
 }
 
+//FF support outerHTML since 11
+//http://stackoverflow.com/questions/1700870/how-do-i-do-outerhtml-in-firefox
+//http://stackoverflow.com/a/817225
+//there is no standard that supports this(outerHTML), although IE 6+ and more recently several other browsers now support it
+safe_get_outerHTML_for_FF_and_others = "outerHTML" in document.documentElement ?
+	function(node) {
+		return node.outerHTML
+	}
+	:
+	function(node) {//for FF lt 11
+		//WARNING: new XMLSerializer().serializeToString() returns rubbish if(xmlns != null && xmlns != "http://www.w3.org/1999/xhtml")
+		var nodeNodeName = node.nodeName
+			, outerHTML_firstPart
+			, xmlns = node.getAttribute("xmlns")
+			//, oldXMLNS
+		;
+
+		/*Do we realy need this???
+		if(xmlns && xmlns != "http://www.w3.org/1999/xhtml") {
+			//new XMLSerializer().serializeToString() returns rubbish if(xmlns != null && xmlns != "http://www.w3.org/1999/xhtml")
+			node.removeAttribute("xmlns");
+			oldXMLNS = xmlns;
+			xmlns = null;
+		}
+		*/
+
+		outerHTML_firstPart = new XMLSerializer().serializeToString(node);
+
+		outerHTML_firstPart = outerHTML_firstPart.match(new RegExp("^<(" + nodeNodeName + ")(?:(?:( xmlns=['\"](.*?)['\"] )| ).*?)?>", "i"));
+		if(outerHTML_firstPart[3] && !xmlns) {
+			outerHTML_firstPart[0] = outerHTML_firstPart[0].replace(outerHTML_firstPart[2], " ");
+		}
+		nodeNodeName = outerHTML_firstPart[1];
+
+		/*if(oldXMLNS) {
+			node.setAttribute("xmlns", oldXMLNS);
+		}*/
+
+		return outerHTML_firstPart[0] + node.innerHTML + "</" + nodeNodeName + ">";
+	}
+;
 
 function _prepeareDocumentDataForSending(_document, xhr) {
 	var isXML = checkIsXML(_document)
@@ -699,19 +816,7 @@ function _prepeareDocumentDataForSending(_document, xhr) {
 		, _boolean_temp
 	;
 
-	//http://stackoverflow.com/a/817225 //there is no standard that supports this(outerHTML), although IE 6+ and more recently several other browsers now support it
-	serializedDocument = _document.documentElement[(_boolean_temp = ("outerHTML" in _document.documentElement)) ? 'outerHTML' : 'innerHTML'];
-	if(!serializedDocument) {
-		//Note:: In IE we must do document.head = document.getElementsByTagName('head')[0] before
-		serializedHead = _document.head[(_boolean_temp = ("outerHTML" in _document.head)) ? 'outerHTML' : 'innerHTML'];
-		serializedDocument = _boolean_temp ? serializedHead : "<head>" + serializedHead + "</head>";
-		serializedBody = _document.body[(_boolean_temp = ("outerHTML" in _document.body)) ? 'outerHTML' : 'innerHTML'];
-		serializedDocument += _boolean_temp ? serializedBody : "<body>" + serializedBody + "</body>";
-
-		//Note: In particular, if the document cannot be serialized an "InvalidStateError" exception is thrown.
-		if(!(serializedHead + serializedBody))throw new Error("InvalidStateError");
-	}
-	else if(!_boolean_temp)serializedDocument = "<html>" + serializedDocument + "</html>";
+	serializedDocument = safe_get_outerHTML_for_FF_and_others(_document.documentElement);
 
 	if(isXML) {//TODO:Do we realy need this???
 		serializedDocument = '<?xml version="1.0" encoding="' + charset + '"?>' + serializedDocument;
@@ -827,20 +932,23 @@ XMLHttpRequest2_properties = {
 			;
 			
 			if(!IS_XHR_SUPPORT_RESPONSE) {//TODO:: test error and message
-				if(this["_"].__isAsync__ && val && val != "text") {//Non-text async request not allowed
+				if((this["_"].__isAsync__ && val && val != "text")//Non-text async request not allowed
+					|| xhr.readyState > 1) {
 					_throwDOMException("INVALID_STATE_ERR");
 				}
 			}
 
-			if(this.responseType in XHR_SUPPORT_MAP_RESPONSETYPE) {
+			if(val in XHR_SUPPORT_MAP_RESPONSETYPE) {
+				delete this.nativeXHR.shimResponseType;
+				
 				xhr.responseType = val;
 				if(IS_XHR_SUPPORT_MOZRESPONSETYPE) {//FF
 					xhr["mozResponseType"] = "";
 				}
 			}
 			else {
-				if((readySate = xhr.readySate) > 1 && readySate < 4) {
-					throw new Error("Not allowed");//todo: error message
+				if(xhr.readyState > 1) {
+					throw new Error("INVALID_STATE_ERR");
 				}
 				//try{ this.nativeXHR.response = "" } catch(__e__){}
 				if(IS_XHR_SUPPORT_MOZRESPONSETYPE) {//FF
@@ -876,66 +984,6 @@ XMLHttpRequest2_properties = {
 		}
 	}
 
-	, "onabort" : {
-		"get" : function() {
-			return this.nativeXHR.onabort;
-		}
-		, "set" : function(val) {
-			this.nativeXHR.onabort = val;
-			return val;
-		}
-	}
-
-	, "onerror" : {
-		"get" : function() {
-			return this.nativeXHR.onerror;
-		}
-		, "set" : function(val) {
-			this.nativeXHR.onerror = val;
-			return val;
-		}
-	}
-
-	, "onload" : {
-		"get" : function() {
-			return this.nativeXHR.onload;
-		}
-		, "set" : function(val) {
-			this.nativeXHR.onload = val;
-			return val;
-		}
-	}
-
-	, "onloadend" : {
-		"get" : function() {
-			return this.nativeXHR.onloadend;
-		}
-		, "set" : function(val) {
-			this.nativeXHR.onloadend = val;
-			return val;
-		}
-	}
-
-	, "onloadstart" : {
-		"get" : function() {
-			return this.nativeXHR.onloadstart;
-		}
-		, "set" : function(val) {
-			this.nativeXHR.onloadstart = val;
-			return val;
-		}
-	}
-
-	, "onprogress" : {
-		"get" : function() {
-			return this.nativeXHR.onprogress;
-		}
-		, "set" : function(val) {
-			this.nativeXHR.onprogress = val;
-			return val;
-		}
-	}
-
 	, "onreadystatechange" : null
 	
 	, "UNSET" : 0
@@ -944,6 +992,36 @@ XMLHttpRequest2_properties = {
 	, "LOADING" : 3
 	, "DONE" : 4
 };
+
+_xhr_onevents.forEach(function(key) {
+	key = "on" + key;
+
+	var _local__IS_SUPPORN_THIS_ON_EVENT = IS_XHR_SUPPORT_CORS && IS_XHR_IMPLIMENT_EVENT_TARGET && XHR_SUPPORT_MAP_ON_EVENTS[key];
+	
+	this[key] = {
+		"get" : _local__IS_SUPPORN_THIS_ON_EVENT ?
+			function() {
+				return this.nativeXHR[key];
+			}
+			:
+			function() {
+				return this["_"]["__on__" + key];
+			}
+		, "set" : _local__IS_SUPPORN_THIS_ON_EVENT ?
+			function(val) {
+				return this.nativeXHR[key] = val.bind(this);
+			}
+			:
+			function(val) {
+				this["_"]["__on__" + key] = val.bind(this);
+				this.nativeXHR[key] = function(e) {
+					this["dispatchEvent"](e);
+				}.bind(this);
+				return val;
+			}
+	};
+}, XMLHttpRequest2_properties);
+
 if(IS_XHR_SUPPORT_UPLOAD) {//TODO:: remove this check and provide an upload shim
 	XMLHttpRequest2_properties["upload"] = IS_XHR_SUPPORT_UPLOAD ? 
 		function() {
@@ -951,10 +1029,10 @@ if(IS_XHR_SUPPORT_UPLOAD) {//TODO:: remove this check and provide an upload shim
 		}
 		:
 		function() {
-			//TODO:: return this.nativeXHR["_"].shimedUpload || (this.nativeXHR["_"].shimedUpload = new _XMLHttpRequestUpload(this.nativeXHR);
+			//TODO:: return this["_"].shimedUpload || (this["_"].shimedUpload = new _XMLHttpRequestUpload(this.nativeXHR);
 		}
 }
-if(IS_XHR_SUPPORT_WITHCREDENTIALS || IS_XDOMAINREQUEST_SUPPORT /* || CORS_SHIM*/) {
+if(IS_XHR_SUPPORT_WITHCREDENTIALS /* || CORS_SHIM*/) {
 	XMLHttpRequest2_properties["withCredentials"] = {
 		"get" : function() {
 			return this.nativeXHR.withCredentials;
@@ -964,13 +1042,8 @@ if(IS_XHR_SUPPORT_WITHCREDENTIALS || IS_XDOMAINREQUEST_SUPPORT /* || CORS_SHIM*/
 		}
 	}
 }
-__setProperties(XMLHttpRequest2.prototype, XMLHttpRequest2_properties);
 
 XMLHttpRequest2.prototype["addEventListener"] = function(eventType, handler, capture) {
-	if(!IS_XHR_SUPPORT_CORS) {//TODO:: check is where are browsers that implement EventTarget interface but not CORS
-		throw new Error("Native XHR must implement CORS and EventTarget interface")
-	}
-
 	var _ = this["_"]
 		, a
 	;
@@ -979,12 +1052,12 @@ XMLHttpRequest2.prototype["addEventListener"] = function(eventType, handler, cap
 	if(!(a = handler["__uuid__"]))a = handler["__uuid__"] = (capture ? "0" : "1") + UUID_PREFIX + ++UUID;
 	if(!_[a])_[a] = b.bind(this);
 
-	if(IS_XHR_IMPLIMENT_EVENT_TARGET) {
+	if(IS_XHR_SUPPORT_CORS && IS_XHR_IMPLIMENT_EVENT_TARGET) {
 		this.nativeXHR.addEventListener(eventType, _[a], capture)
 	}
 };
 
-XMLHttpRequest2.prototype["dispatchEvent"] = IS_XHR_IMPLIMENT_EVENT_TARGET ?
+XMLHttpRequest2.prototype["dispatchEvent"] = IS_XHR_SUPPORT_CORS && IS_XHR_IMPLIMENT_EVENT_TARGET ?
 	function() {
 		return this.nativeXHR["dispatchEvent"].apply(this.nativeXHR, arguments)
 	}
@@ -992,7 +1065,7 @@ XMLHttpRequest2.prototype["dispatchEvent"] = IS_XHR_IMPLIMENT_EVENT_TARGET ?
 	function(e) {
 		var thisObj = this
 			, _ = thisObj["_"]
-			, handler = thisObj["on" + e.type]
+			, handler = _["__on__on" + e.type]
 			, keys
 		;
 
@@ -1020,10 +1093,10 @@ XMLHttpRequest2.prototype["dispatchEvent"] = IS_XHR_IMPLIMENT_EVENT_TARGET ?
 XMLHttpRequest2.prototype["removeEventListener"] = function(eventType, handler, capture) {
 	var _
 		, uuid = handler && handler["__uuid__"]
-		;
+	;
 
 	if(uuid && (_ = this["_"]) && (_ = _[UUID_PREFIX + eventType])) {
-		if(IS_XHR_IMPLIMENT_EVENT_TARGET) {
+		if(IS_XHR_SUPPORT_CORS && IS_XHR_IMPLIMENT_EVENT_TARGET) {
 			this.nativeXHR.removeEventListener(eventType, _[uuid], capture);
 		}
 		delete _[uuid];
@@ -1041,6 +1114,7 @@ XMLHttpRequest2.prototype["open"] = function(method, uri, isAsync, username, pas
 	// http://dvcs.w3.org/hg/xhr/raw-file/tip/Overview.html#the-open()-method
 
 	var thisObj = this
+		, _ = thisObj["_"]
 		, xhr = thisObj.nativeXHR
 		, cors = !IS_XHR_SUPPORT_CORS && CORS_test(thisObj.uri)
 	;
@@ -1058,10 +1132,10 @@ XMLHttpRequest2.prototype["open"] = function(method, uri, isAsync, username, pas
 	}
 
 	isAsync = isAsync === void 0 ? true : isAsync;
-	thisObj["_"].__method__ = method;
-	thisObj["_"].__uri__ = uri;
-	thisObj["_"].__isAsync__ = isAsync;
-	thisObj["_"].__cors__ = cors; 
+	_.__method__ = method;
+	_.__uri__ = uri;
+	_.__isAsync__ = isAsync;
+	_.__cors__ = cors; 
 
 	// [jQuery]
 	// Open the socket
@@ -1078,7 +1152,8 @@ XMLHttpRequest2.prototype["open"] = function(method, uri, isAsync, username, pas
 XMLHttpRequest2.prototype["send"] = function(data) {
 	var thisObj = this
 		, xhr = thisObj.nativeXHR
-		, cors = thisObj["_"].__cors__
+		, _ = thisObj["_"]
+		, cors = _.__cors__
 		, doNotSend_as_XHR
 		, _responseType = thisObj.responseType
 	;
@@ -1111,19 +1186,8 @@ XMLHttpRequest2.prototype["send"] = function(data) {
 
 	// fix Opera 12.00 bug
 	// http://stackoverflow.com/questions/11284728/how-do-i-access-8-bit-binary-data-from-javascript-in-opera?rq=1
-	if(global.opera && global.opera.version() == "12.00" && (_responseType == "arraybuffer"/* || _responseType == "blob"*/) && /^text\//.test(this["_"].overridenMimeType)) {
+	if(global.opera && global.opera.version() == "12.00" && (_responseType == "arraybuffer"/* || _responseType == "blob"*/) && /^text\//.test(_.overridenMimeType)) {
 		this.overrideMimeType('application\/octet-stream; charset=x-user-defined');
-	}
-		
-
-	if(IS_XHR_SUPPORT_MOZRESPONSETYPE) {//FF TODO:: check FF supporting responseType's
-		xhr["mozResponseType"] = thisObj.responseType;
-	}
-	else if(xhr.responseType !== _responseType && IS_XHR_SUPPORT_RESPONSE && _responseType in XHR_SUPPORT_MAP_RESPONSETYPE && _responseType) {
-		xhr.responseType = _responseType;
-	}
-	else {
-		thisObj.responseType = "";
 	}
 
 	if(!IS_XHR_SUPPORT_ON_EVENTS) {
@@ -1131,9 +1195,6 @@ XMLHttpRequest2.prototype["send"] = function(data) {
 			func = "on" + func;
 			this[func] = XMLHttpRequest2_onevent.bind(this, func);
 		}, thisObj);
-	}
-	if(IS_XHR_SUPPORT_ONPROGRESS) {//TODO:: can we use just IS_XHR_SUPPORT_ON_EVENTS ?
-		xhr.onprogress = thisObj._onprogress;
 	}
 
 	xhr.onreadystatechange = shimOnreadystatechange.bind(this);
@@ -1187,8 +1248,9 @@ XMLHttpRequest2.prototype["send"] = function(data) {
 			document.domain = cors.to;
 		}
 
-		if(!IS_XHR_SUPPORT_TIMEOUT && thisObj.timeout !== 0)xhr["_"].timeoutTimer = setTimeout(function() {
+		if(!IS_XHR_SUPPORT_TIMEOUT && thisObj.timeout !== 0)_.timeoutTimer = setTimeout(function() {
 			this.abort();
+			thisObj["dispatchEvent"](_shimed_ProgressEvent("timeout"));
 		}.bind(thisObj), thisObj.timeout)
 		
 		if(data && data.needSendAsBin) {
@@ -1256,6 +1318,16 @@ XMLHttpRequest2.prototype["setRequestHeader"] = function() {
 	}
 };
 
+
+
+__setProperties(XMLHttpRequest2.prototype, XMLHttpRequest2_properties);
+
+if(__GCC__IELT10_SUPPORT__ && __GCC__IELT9_SUPPORT__ && _browser_msie && !IS_OBJECT_DEFINEPROPERTY_WORKS_ON_OBJECT) {//this code ONLY for IE8-
+	XMLHttpRequest2 = __IElt9_createVBClass(XMLHttpRequest2, XMLHttpRequest2_properties);
+}
+
+
+
 if(!IS_XHR_SUPPORT_CORS) {
 	XMLHttpRequest2_createNewCORSXhr = function(xhr, corsDescription) {
 		var thisObj = this
@@ -1283,11 +1355,9 @@ if(!IS_XHR_SUPPORT_CORS) {
 		else {
 			corsXhr.shimResponseType = xhr.shimResponseType;
 			corsXhr.timeout = xhr.timeout;
-			corsXhr["_"] = xhr["_"];
 			_xhr_onevents.forEach(function(key) {
-				key = "on" + key;
-				this[key] = xhr[key];
-			}, corsXhr);
+				corsXhr["on" + key] = this["__on__on" + key];
+			}, thisObj["_"]);
 			XMLHttpRequest2_nativeXHRClear.call(this);
 		}
 
@@ -1308,7 +1378,6 @@ XMLHttpRequest2_nativeXHRClear = function() {
 		}
 		delete xhr.shimResponse;
 		delete xhr.shimResponseText;
-		delete xhr.shimResponseType;
 		delete xhr.shimResponseXML;
 		delete xhr.shimStatus;
 		delete xhr.shimStatusText;
@@ -1391,8 +1460,6 @@ shimOnreadystatechange = function(e) {
 					_responseText = void 0;
 				}
 
-				_responseTypeIsObject = typeof xhr.response == "object" && xhr.response !== null;
-
 				if(xhr.responseType === _responseType && IS_XHR_SUPPORT_RESPONSE && _responseType in XHR_SUPPORT_MAP_RESPONSETYPE) {
 					//Good browser -> do nothing
 				}
@@ -1402,10 +1469,6 @@ shimOnreadystatechange = function(e) {
 							// Array Buffer Firefox
 							if ('mozResponseArrayBuffer' in xhr) {
 								xhr.shimResponse = xhr.mozResponseArrayBuffer;
-							}
-							// Array Buffer Chrome //TODO: need this?
-							else if (xhr.responseType == _responseType && _responseTypeIsObject) {
-								xhr.shimResponse = xhr.response;
 							}
 							// Internet Explorer (Byte array accessible through VBScript -- convert to text)
 							// http://stackoverflow.com/questions/1919972/how-do-i-access-xhr-responsebody-for-binary-data-from-javascript-in-ie/3050364
